@@ -1,5 +1,7 @@
 from keras import backend as K
 from keras.models import Model
+from keras.layers.embeddings import Embedding
+from keras.layers import Flatten
 from keras.layers import (BatchNormalization, Conv1D, Dense, Input, 
     TimeDistributed, Activation, Bidirectional, SimpleRNN, GRU, LSTM, Dropout)
 from keras import regularizers
@@ -278,17 +280,12 @@ def final_model_3(input_dim, units, output_dim=29):
 def final_model(input_dim, units, output_dim=29):
     """ Build a deep network for speech
     """
-    filters = 200
-    kernel_size = 11
-    conv_stride = 2
-    conv_border_mode = 'valid'
-
-    dropout_rate = .20
+    dropout_rate = .5
 
     # Main acoustic input
     input_data = Input(name='the_input', shape=(None, input_dim))
+
     # TODO: Specify the layers in your network
-    # Add convolutional layer
 
     #rnn_1 = Bidirectional(LSTM(units, activation='relu', return_sequences=True, implementation=2, kernel_regularizer=regularizers.l2(0.00000001), activity_regularizer=regularizers.l2(0.00000001), name='rnn_1'))(input_data)
     rnn_1 = Bidirectional(LSTM(units, activation='tanh', return_sequences=True, implementation=2, name='rnn_1'))(input_data)
