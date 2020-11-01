@@ -351,7 +351,11 @@ def final_model(input_dim, units, output_dim=29):
     rnn_2 = BatchNormalization(name='bn_rnn_2')(rnn_2)
     rnn_2 = Dropout(dropout_rate)(rnn_2)
 
-    time_dense = TimeDistributed(Dense(output_dim))(rnn_2)
+    rnn_3 = Bidirectional(LSTM(units, activation='tanh', return_sequences=True, implementation=2, name='rnn_3'))(rnn_2)
+    rnn_3 = BatchNormalization(name='bn_rnn_3')(rnn_3)
+    rnn_3 = Dropout(dropout_rate)(rnn_3)
+
+    time_dense = TimeDistributed(Dense(output_dim))(rnn_3)
     #time_dense = Dropout(dropout_rate)(time_dense)
 
     # TODO: Add softmax activation layer
