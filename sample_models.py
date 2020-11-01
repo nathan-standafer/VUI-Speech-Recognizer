@@ -3,7 +3,7 @@ from keras.models import Model
 from keras.layers.embeddings import Embedding
 from keras.layers import Flatten
 from keras.layers import (BatchNormalization, Conv1D, Dense, Input, 
-    TimeDistributed, Activation, Bidirectional, SimpleRNN, GRU, LSTM, Dropout)
+    TimeDistributed, Activation, Bidirectional, SimpleRNN, GRU, LSTM, Dropout, Add)
 from keras import regularizers
 
 def simple_rnn_model(input_dim, output_dim=29):
@@ -146,12 +146,12 @@ def final_model_1(input_dim, units, output_dim=29):
     fathers a mosre markle prsn to sa the l........................................
 
     """
-    filters = 200
+    filters = 512
     kernel_size = 11
     conv_stride = 2
     conv_border_mode = 'valid'
 
-    dropout_rate = .20
+    dropout_rate = .25
 
     # Main acoustic input
     input_data = Input(name='the_input', shape=(None, input_dim))
@@ -165,15 +165,17 @@ def final_model_1(input_dim, units, output_dim=29):
     bnn_conv_1d = BatchNormalization(name='conv_1d_bn')(conv_1d)
     bnn_conv_1d = Dropout(dropout_rate)(bnn_conv_1d)
 
+    #rnn_1 = Bidirectional(LSTM(units, activation='relu', return_sequences=True, implementation=2, kernel_regularizer=regularizers.l2(0.00000001), activity_regularizer=regularizers.l2(0.00000001), name='rnn_1'))(input_data)
     rnn_1 = Bidirectional(LSTM(units, activation='tanh', return_sequences=True, implementation=2, name='rnn_1'))(bnn_conv_1d)
+    rnn_1 = BatchNormalization(name='bn_rnn_1')(rnn_1)
     rnn_1 = Dropout(dropout_rate)(rnn_1)
-    bn_rnn_1 = BatchNormalization(name='bn_rnn_1')(rnn_1)
 
-    rnn_2 = Bidirectional(LSTM(units, activation='tanh', return_sequences=True, implementation=2, name='rnn_2'))(bn_rnn_1)
+    #rnn_2 = Bidirectional(LSTM(units, activation='relu', return_sequences=True, implementation=2, kernel_regularizer=regularizers.l2(0.00000001), activity_regularizer=regularizers.l2(0.00000001), name='rnn_2'))(rnn_1)
+    rnn_2 = Bidirectional(LSTM(units, activation='tanh', return_sequences=True, implementation=2, name='rnn_2'))(rnn_1)
+    rnn_2 = BatchNormalization(name='bn_rnn_2')(rnn_2)
     rnn_2 = Dropout(dropout_rate)(rnn_2)
-    bn_rnn_2 = BatchNormalization(name='bn_rnn_2')(rnn_2)
 
-    time_dense = TimeDistributed(Dense(output_dim))(bn_rnn_2)
+    time_dense = TimeDistributed(Dense(output_dim))(rnn_2)
     time_dense = Dropout(dropout_rate)(time_dense)
 
     # TODO: Add softmax activation layer
@@ -277,6 +279,60 @@ def final_model_3(input_dim, units, output_dim=29):
     print(model.summary())
     return model
 
+def rnn_block(X, units, dropout_rate, stage, block):
+    # https://www.dlology.com/blog/how-to-deal-with-vanishingexploding-gradients-in-keras/
+
+    # defining names basis
+    rnn_name_base = 'rnn' + str(stage) + block + '_branch'
+    bn_name_base = 'bn' + str(stage) + block + '_branch'
+
+    # Save the input value. You'll need this later to add back to the main path.
+    X_shortcut = X
+
+    # First component of main path
+    X = Bidirectional(LSTM(units, activation='tanh', return_sequences=True, implementation=2, recurrent_dropout=dropout_rate, dropout=dropout_rate, name=rnn_name_base+'a'))(X)
+    X = BatchNormalization(name=bn_name_base+'a')(X)
+    #X = Dropout(dropout_rate)(X)
+
+    # Second component of main path
+    X = Bidirectional(LSTM(units, activation='tanh', recurrent_activation='sigmoid', return_sequences=True, implementation=2, recurrent_dropout=dropout_rate, dropout=dropout_rate, name=rnn_name_base+'b'))(X)
+    X = BatchNormalization(name=bn_name_base+'b')(X)
+    #X = Dropout(dropout_rate)(X)
+
+    # Final step: Add shortcut value to main path, and pass it through a RELU activation
+    X = Add()([X, X_shortcut])
+    X = Activation('relu')(X)
+    return X
+
+def final_model_5(input_dim, units, output_dim=29):
+    """ Build a deep network for speech
+    """
+    dropout_rate = .25
+
+    # Main acoustic input
+    input_data = Input(name='the_input', shape=(None, input_dim))
+
+    # TODO: Specify the layers in your network
+    rnn_0 =  Bidirectional(LSTM(units, activation='tanh', return_sequences=True, implementation=2, recurrent_dropout=dropout_rate, dropout=dropout_rate, name='rnn_0'))(input_data)
+    rnn_1 = rnn_block(rnn_0, units, dropout_rate, 1, "rnn_block")
+    rnn_2 = rnn_block(rnn_1, units, dropout_rate, 2, "rnn_block")
+
+    time_dense = TimeDistributed(Dense(output_dim))(rnn_2)
+    time_dense = Dropout(dropout_rate)(time_dense)
+
+    # TODO: Add softmax activation layer
+    y_pred = Activation('softmax', name='softmax')(time_dense)
+
+    # Specify the model
+    model = Model(inputs=input_data, outputs=y_pred)
+    # TODO: Specify model.output_length
+    # model.output_length = ...
+    model.output_length = lambda x: x
+
+    print("final_model output length: {}".format(model.output_length))
+    print(model.summary())
+    return model
+
 def final_model(input_dim, units, output_dim=29):
     """ Build a deep network for speech
     """
@@ -287,17 +343,13 @@ def final_model(input_dim, units, output_dim=29):
 
     # TODO: Specify the layers in your network
 
-    #rnn_1 = Bidirectional(LSTM(units, activation='relu', return_sequences=True, implementation=2, kernel_regularizer=regularizers.l2(0.00000001), activity_regularizer=regularizers.l2(0.00000001), name='rnn_1'))(input_data)
     rnn_1 = Bidirectional(LSTM(units, activation='tanh', return_sequences=True, implementation=2, name='rnn_1'))(input_data)
     rnn_1 = BatchNormalization(name='bn_rnn_1')(rnn_1)
     rnn_1 = Dropout(dropout_rate)(rnn_1)
 
-
-    #rnn_2 = Bidirectional(LSTM(units, activation='relu', return_sequences=True, implementation=2, kernel_regularizer=regularizers.l2(0.00000001), activity_regularizer=regularizers.l2(0.00000001), name='rnn_2'))(rnn_1)
     rnn_2 = Bidirectional(LSTM(units, activation='tanh', return_sequences=True, implementation=2, name='rnn_2'))(rnn_1)
     rnn_2 = BatchNormalization(name='bn_rnn_2')(rnn_2)
     rnn_2 = Dropout(dropout_rate)(rnn_2)
-
 
     time_dense = TimeDistributed(Dense(output_dim))(rnn_2)
     #time_dense = Dropout(dropout_rate)(time_dense)
